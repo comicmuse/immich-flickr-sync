@@ -79,6 +79,25 @@ def test_upload_photo_returns_photo_id(tmp_path):
     assert call_kwargs["title"] == "My Photo"
     assert "tag1 tag2" in call_kwargs["tags"]
     assert call_kwargs["is_public"] == 0
+    assert call_kwargs["format"] == "etree"
+
+
+def test_upload_photo_quotes_multi_word_tags(tmp_path):
+    client, mock_api = make_client()
+    mock_api.upload.return_value = MagicMock(
+        find=lambda tag: MagicMock(text="photo-id")
+    )
+    img = tmp_path / "photo.jpg"
+    img.write_bytes(b"img")
+    client.upload_photo(
+        file_path=img,
+        title="T",
+        tags=["New York", "simple"],
+        date_taken="2026-01-01T00:00:00Z",
+    )
+    call_kwargs = mock_api.upload.call_args[1]
+    assert '"New York"' in call_kwargs["tags"]
+    assert "simple" in call_kwargs["tags"]
 
 
 def test_set_licence():

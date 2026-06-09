@@ -37,6 +37,11 @@ class FlickrClient:
     def add_photo_to_photoset(self, photoset_id: str, photo_id: str) -> None:
         self._api.photosets.addPhoto(photoset_id=photoset_id, photo_id=photo_id)
 
+    @staticmethod
+    def _format_tags(tags: list[str]) -> str:
+        # Flickr's upload API splits on spaces; quote multi-word tags
+        return " ".join(f'"{t}"' if " " in t else t for t in tags)
+
     def upload_photo(
         self,
         file_path: Path,
@@ -45,14 +50,16 @@ class FlickrClient:
         date_taken: str,
         is_public: bool = False,
     ) -> str:
+        # Upload endpoint always returns XML regardless of global format setting
         resp = self._api.upload(
             filename=str(file_path),
             title=title,
-            tags=" ".join(tags),
+            tags=self._format_tags(tags),
             date_taken=date_taken,
             is_public=1 if is_public else 0,
             is_friend=0,
             is_family=0,
+            format="etree",
         )
         return resp.find("photoid").text
 
