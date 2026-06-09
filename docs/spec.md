@@ -67,6 +67,11 @@ takes precedence over file value).
 immich:
   url: "http://192.168.1.154:2283"   # Base URL of Immich instance
   api_key: "YOUR_IMMICH_API_KEY"     # Env: IMMICH_API_KEY
+  storage_path: null                 # Optional: absolute path to Immich's upload storage
+                                     # directory on the local filesystem. When set, originals
+                                     # are read directly from disk (zero download traffic).
+                                     # Only usable when the sync script runs on the same
+                                     # host as Immich or has the storage volume mounted.
 
 flickr:
   api_key: "YOUR_FLICKR_API_KEY"         # Env: FLICKR_API_KEY
@@ -130,9 +135,19 @@ def get_album_assets(album_id: str) -> list[Asset]
 `GET /albums/{id}` — returns full album including asset list.
 
 ```python
-def download_asset(asset_id: str, dest_path: Path) -> Path
+def download_asset(asset: Asset, dest_path: Path) -> Path
 ```
-`GET /assets/{id}/original` — streams original file to `dest_path`.
+Returns a `Path` to the original file using one of two strategies:
+
+- **Local storage mode** (when `immich.storage_path` is configured): resolves
+  `Path(storage_path) / asset.originalPath` and returns it directly — no
+  network traffic, no copy. Falls back to API download if the file is not
+  found at that path.
+- **API download mode** (default): `GET /assets/{id}/original` — streams the
+  original in chunks to `dest_path` and returns `dest_path`.
+
+The caller (sync loop) checks whether the returned path equals `dest_path`; if
+not, it is a local original and must **not** be deleted after upload.
 
 ### Data models
 
@@ -158,6 +173,7 @@ class Person:
 class Asset:
     id: str
     originalFileName: str
+    originalPath: str      # relative path within Immich storage, e.g. "upload/.../IMG_001.jpg"
     isFavorite: bool
     type: str              # "IMAGE" | "VIDEO"
     fileCreatedAt: str     # ISO 8601 — use as Flickr date_taken
@@ -524,6 +540,20 @@ WantedBy=timers.target
 ---
 
 ## Known Limitations and Notes
+
+### Download strategy
+
+By default the sync script downloads each original from Immich via HTTP, writes
+it to `tmp_dir`, uploads it to Flickr, then deletes the temp file. For a remote
+Immich instance this means bytes travel Immich → sync host → Flickr, doubling
+the external bandwidth cost.
+
+When `immich.storage_path` is set the script reads originals directly from disk
+instead, so only the Flickr upload consumes external bandwidth. This requires
+the sync script to run on the same machine as Immich, or for the Immich upload
+volume to be mounted at `storage_path`. The path is constructed as
+`Path(storage_path) / asset.originalPath` using the relative path returned by
+the `GET /assets/{id}` endpoint.
 
 ### Tags API caveat
 The `getAlbumInfo` endpoint does not return tags on asset objects (upstream

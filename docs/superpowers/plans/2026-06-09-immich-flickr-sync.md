@@ -213,6 +213,22 @@ def test_sync_defaults_applied(tmp_path):
     assert cfg.sync.flickr_photoset_prefix == ""
     assert cfg.sync.tags.sync_immich_tags is True
     assert cfg.sync.tags.extra_tags == []
+
+
+def test_storage_path_defaults_to_none(tmp_config_path):
+    cfg = load_config(tmp_config_path)
+    assert cfg.immich.storage_path is None
+
+
+def test_storage_path_loaded_when_set(tmp_path):
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text(
+        "immich:\n  url: http://x\n  api_key: k\n  storage_path: /mnt/immich\n"
+        "flickr:\n  api_key: fk\n  api_secret: fs\n"
+        "  access_token: at\n  access_token_secret: ats\n"
+    )
+    cfg = load_config(cfg_file)
+    assert cfg.immich.storage_path == "/mnt/immich"
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -237,6 +253,7 @@ import yaml
 class ImmichConfig:
     url: str
     api_key: str
+    storage_path: str | None = None
 
 
 @dataclass
@@ -304,6 +321,7 @@ def load_config(path: Path) -> Config:
     immich = ImmichConfig(
         url=immich_raw["url"],
         api_key=immich_raw["api_key"],
+        storage_path=immich_raw.get("storage_path"),
     )
     flickr = FlickrConfig(
         api_key=flickr_raw["api_key"],
@@ -634,8 +652,17 @@ def test_get_asset_detail_empty_people():
     assert asset.people == []
 
 
+def _make_asset(id="asset-1", filename="IMG_001.jpg", original_path="upload/IMG_001.jpg"):
+    from immich_flickr_sync.immich import Asset
+    return Asset(
+        id=id, originalFileName=filename, originalPath=original_path,
+        isFavorite=True, type="IMAGE", fileCreatedAt="2026-03-01T12:00:00Z",
+        exifInfo=None,
+    )
+
+
 @rsps_lib.activate
-def test_download_asset_writes_file(tmp_path):
+def test_download_asset_api_mode(tmp_path):
     rsps_lib.add(
         rsps_lib.GET,
         f"{BASE}/assets/asset-1/original",
@@ -644,9 +671,48 @@ def test_download_asset_writes_file(tmp_path):
     )
     client = ImmichClient(base_url="http://immich.example.com", api_key="key")
     dest = tmp_path / "asset-1.jpg"
-    result = client.download_asset("asset-1", dest)
-    assert result == dest
+    asset = _make_asset()
+    result = client.download_asset(asset, dest)
+    assert result == dest  # returned temp path — caller should clean up
     assert dest.read_bytes() == b"fake-image-bytes"
+
+
+def test_download_asset_local_storage_mode(tmp_path):
+    original = tmp_path / "upload" / "IMG_001.jpg"
+    original.parent.mkdir(parents=True)
+    original.write_bytes(b"real-image-bytes")
+
+    client = ImmichClient(
+        base_url="http://immich.example.com",
+        api_key="key",
+        storage_path=str(tmp_path),
+    )
+    dest = tmp_path / "tmp" / "asset-1.jpg"
+    asset = _make_asset(original_path="upload/IMG_001.jpg")
+    result = client.download_asset(asset, dest)
+    assert result == original  # returned original path — caller must NOT delete
+    assert not dest.exists()   # no download occurred
+
+
+@rsps_lib.activate
+def test_download_asset_local_storage_falls_back_when_missing(tmp_path):
+    # storage_path set but file not found there — falls back to API
+    rsps_lib.add(
+        rsps_lib.GET,
+        f"{BASE}/assets/asset-1/original",
+        body=b"api-bytes",
+        stream=True,
+    )
+    client = ImmichClient(
+        base_url="http://immich.example.com",
+        api_key="key",
+        storage_path=str(tmp_path / "nonexistent"),
+    )
+    dest = tmp_path / "asset-1.jpg"
+    asset = _make_asset()
+    result = client.download_asset(asset, dest)
+    assert result == dest
+    assert dest.read_bytes() == b"api-bytes"
 
 
 @rsps_lib.activate
@@ -698,6 +764,7 @@ class Person:
 class Asset:
     id: str
     originalFileName: str
+    originalPath: str
     isFavorite: bool
     type: str
     fileCreatedAt: str
@@ -718,6 +785,7 @@ def _parse_asset(raw: dict) -> Asset:
     return Asset(
         id=raw["id"],
         originalFileName=raw["originalFileName"],
+        originalPath=raw.get("originalPath", ""),
         isFavorite=raw["isFavorite"],
         type=raw["type"],
         fileCreatedAt=raw["fileCreatedAt"],
@@ -728,8 +796,9 @@ def _parse_asset(raw: dict) -> Asset:
 
 
 class ImmichClient:
-    def __init__(self, base_url: str, api_key: str):
+    def __init__(self, base_url: str, api_key: str, storage_path: str | None = None):
         self._base = base_url.rstrip("/") + "/api"
+        self._storage_path = storage_path
         self._session = requests.Session()
         self._session.headers["x-api-key"] = api_key
 
@@ -760,13 +829,22 @@ class ImmichClient:
         data = self._get(f"/assets/{asset_id}").json()
         return _parse_asset(data)
 
-    def download_asset(self, asset_id: str, dest_path: Path) -> Path:
+    def download_asset(self, asset: Asset, dest_path: Path) -> Path:
+        """Returns path to the file. If local storage is used, returns the original
+        path (caller must NOT delete). If API download, returns dest_path (caller
+        should delete after upload)."""
+        if self._storage_path and asset.originalPath:
+            local = Path(self._storage_path) / asset.originalPath
+            if local.exists():
+                return local
+
         with self._session.get(
-            f"{self._base}/assets/{asset_id}/original", stream=True
+            f"{self._base}/assets/{asset.id}/original", stream=True
         ) as resp:
             if resp.status_code in (401, 403):
-                raise PermissionError(f"Immich auth failed on download: {asset_id}")
+                raise PermissionError(f"Immich auth failed on download: {asset.id}")
             resp.raise_for_status()
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
             with open(dest_path, "wb") as f:
                 for chunk in resp.iter_content(chunk_size=65536):
                     f.write(chunk)
@@ -779,7 +857,7 @@ class ImmichClient:
 pytest tests/test_immich.py -v
 ```
 
-Expected: 7 tests PASSED.
+Expected: 10 tests PASSED.
 
 - [ ] **Step 5: Commit**
 
@@ -1445,12 +1523,13 @@ def run_sync(
             ext = Path(asset.originalFileName).suffix
             tmp_file = tmp_dir / f"{asset.id}{ext}"
             tmp_dir.mkdir(parents=True, exist_ok=True)
+            file_path = tmp_file  # default; updated below if local storage is used
 
             try:
-                immich.download_asset(asset.id, tmp_file)
+                file_path = immich.download_asset(detail, tmp_file)
                 photo_id = _upload_with_retry(
                     flickr,
-                    file_path=tmp_file,
+                    file_path=file_path,
                     title=_flickr_title(asset.originalFileName),
                     tags=flickr_tags,
                     date_taken=asset.fileCreatedAt,
@@ -1473,7 +1552,8 @@ def run_sync(
             except Exception as exc:
                 log.warning("Failed to sync asset %s: %s", asset.id, exc)
             finally:
-                if tmp_file.exists():
+                # Only delete if we wrote a temp copy; local originals are not ours to remove
+                if file_path == tmp_file and tmp_file.exists():
                     tmp_file.unlink()
 
         log.info(
@@ -1735,7 +1815,11 @@ def run(config_path: Path, dry_run: bool, album_filter: str | None) -> None:
     _setup_logging(config)
     validate_config(config)
 
-    immich = ImmichClient(base_url=config.immich.url, api_key=config.immich.api_key)
+    immich = ImmichClient(
+        base_url=config.immich.url,
+        api_key=config.immich.api_key,
+        storage_path=config.immich.storage_path,
+    )
     flickr = FlickrClient(
         api_key=config.flickr.api_key,
         api_secret=config.flickr.api_secret,
@@ -1933,3 +2017,7 @@ Spec sections vs plan coverage:
 | Config env-var override | Task 2 `test_env_var_overrides_*` |
 | Config YAML validation | Task 2 `test_missing_immich_url_raises` |
 | Docker files | Task 8 |
+| `storage_path` config option | Task 2 `test_storage_path_*` |
+| Local storage bypasses download | Task 4 `test_download_asset_local_storage_mode` |
+| Fallback to API when local file missing | Task 4 `test_download_asset_local_storage_falls_back_*` |
+| Local originals not deleted after upload | sync.py `file_path == tmp_file` guard |
