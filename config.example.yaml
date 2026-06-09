@@ -12,6 +12,7 @@ flickr:
 
 sync:
   album_prefix: "[F]"
+  public: false           # set to true to upload photos as public
   state_file: "data/state.json"
   tmp_dir: "/tmp/immich-flickr"
   flickr_photoset_prefix: ""

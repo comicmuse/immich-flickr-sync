@@ -38,6 +38,7 @@ class SyncConfig:
     state_file: str = "state.json"
     tmp_dir: str = "/tmp/immich-flickr"
     flickr_photoset_prefix: str = ""
+    public: bool = False
     tags: TagsConfig = field(default_factory=TagsConfig)
     licensing: LicensingConfig = field(default_factory=LicensingConfig)
 
@@ -94,6 +95,7 @@ def load_config(path: Path) -> Config:
         state_file=sync_raw.get("state_file", "state.json"),
         tmp_dir=sync_raw.get("tmp_dir", "/tmp/immich-flickr"),
         flickr_photoset_prefix=sync_raw.get("flickr_photoset_prefix", ""),
+        public=sync_raw.get("public", False),
         tags=TagsConfig(
             sync_immich_tags=tags_raw.get("sync_immich_tags", True),
             extra_tags=tags_raw.get("extra_tags", []),

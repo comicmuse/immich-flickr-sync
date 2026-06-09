@@ -118,6 +118,7 @@ def run_sync(
                     title=_flickr_title(asset.originalFileName),
                     tags=flickr_tags,
                     date_taken=asset.fileCreatedAt,
+                    is_public=config.sync.public,
                 )
                 flickr.set_licence(photo_id, licence_id)
 
