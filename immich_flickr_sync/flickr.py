@@ -73,5 +73,5 @@ class FlickrClient:
         return [p["id"] for p in resp["photoset"].get("photo", [])]
 
     def get_user_nsid(self) -> str:
-        resp = self._api.auth.checkToken()
-        return resp["auth"]["user"]["nsid"]
+        resp = self._api.test.login()
+        return resp["user"]["id"]

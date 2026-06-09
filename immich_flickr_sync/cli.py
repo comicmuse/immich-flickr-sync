@@ -54,7 +54,7 @@ def validate_config(config: Config) -> None:
             store_token=False,
             format="parsed-json",
         )
-        api.auth.checkToken()
+        api.test.login()
     except Exception as exc:
         errors.append(f"Flickr auth failed: {exc}")
 

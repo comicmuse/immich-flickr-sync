@@ -121,8 +121,8 @@ def test_get_photos_in_photoset():
 
 def test_get_user_nsid():
     client, mock_api = make_client()
-    mock_api.auth.checkToken.return_value = {
-        "auth": {"user": {"nsid": "12345678@N00"}}
+    mock_api.test.login.return_value = {
+        "user": {"id": "12345678@N00", "username": {"_content": "testuser"}}
     }
     nsid = client.get_user_nsid()
     assert nsid == "12345678@N00"
