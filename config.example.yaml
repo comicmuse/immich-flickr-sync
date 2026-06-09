@@ -1,0 +1,28 @@
+immich:
+  url: "http://192.168.1.154:2283"
+  api_key: "YOUR_IMMICH_API_KEY"   # or set env var IMMICH_API_KEY
+  # storage_path: "/mnt/immich/upload"  # optional: read files directly from disk
+                                         # (zero download traffic for same-host setups)
+
+flickr:
+  api_key: "YOUR_FLICKR_API_KEY"         # or FLICKR_API_KEY
+  api_secret: "YOUR_FLICKR_API_SECRET"   # or FLICKR_API_SECRET
+  access_token: "YOUR_ACCESS_TOKEN"          # or FLICKR_ACCESS_TOKEN
+  access_token_secret: "YOUR_ACCESS_TOKEN_SECRET"  # or FLICKR_ACCESS_TOKEN_SECRET
+
+sync:
+  album_prefix: "[F]"
+  state_file: "data/state.json"
+  tmp_dir: "/tmp/immich-flickr"
+  flickr_photoset_prefix: ""
+  tags:
+    sync_immich_tags: true
+    extra_tags:
+      - "immich-sync"
+  licensing:
+    licence_with_people: 0   # All Rights Reserved
+    licence_without_people: 3  # CC BY-NC-ND
+
+logging:
+  level: "INFO"
+  format: "text"   # or "json"
