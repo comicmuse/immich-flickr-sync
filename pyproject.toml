@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "immich-flickr-sync"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "flickrapi>=2.4",
+    "requests>=2.31",
+    "pyyaml>=6.0",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "responses>=0.23",
+]
+
+[project.scripts]
+immich-flickr-sync = "immich_flickr_sync.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
