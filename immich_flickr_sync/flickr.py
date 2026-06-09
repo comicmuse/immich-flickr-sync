@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import flickrapi
+from flickrapi.auth import FlickrAccessToken
 
 
 @dataclass
@@ -18,10 +19,11 @@ class FlickrClient:
         access_token: str,
         access_token_secret: str,
     ):
+        token = FlickrAccessToken(access_token, access_token_secret, "write")
         self._api = flickrapi.FlickrAPI(
             api_key, api_secret,
-            token=access_token,
-            token_secret=access_token_secret,
+            token=token,
+            store_token=False,
             format="parsed-json",
         )
 

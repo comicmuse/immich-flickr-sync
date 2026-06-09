@@ -28,7 +28,7 @@ def validate_config(config: Config) -> None:
 
     try:
         resp = requests.get(
-            f"{config.immich.url.rstrip('/')}/api/server/about",
+            f"{config.immich.url.rstrip('/')}/api/users/me",
             headers={"x-api-key": config.immich.api_key},
             timeout=10,
         )
@@ -40,12 +40,18 @@ def validate_config(config: Config) -> None:
         errors.append(f"Immich not reachable: {exc}")
 
     try:
+        from flickrapi.auth import FlickrAccessToken
         import flickrapi
+        token = FlickrAccessToken(
+            config.flickr.access_token,
+            config.flickr.access_token_secret,
+            "write",
+        )
         api = flickrapi.FlickrAPI(
             config.flickr.api_key,
             config.flickr.api_secret,
-            token=config.flickr.access_token,
-            token_secret=config.flickr.access_token_secret,
+            token=token,
+            store_token=False,
             format="parsed-json",
         )
         api.auth.checkToken()
