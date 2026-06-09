@@ -4,6 +4,8 @@ See [AGENTS.md](AGENTS.md) for project architecture, invariants, and test approa
 
 ## Development workflow
 
+Use Claude Superpowers. Update the spec and create a plan for every feature 
+
 Use TDD: write failing tests first, then implement. Run `pytest` (not `python -m pytest`) — the venv is active in this project.
 
 Do not `source .venv/bin/activate` in subagent tasks — the venv is already on PATH.
@@ -16,5 +18,4 @@ Follow the existing commit history: `type: short description` (no scope), impera
 
 - Do not add comments explaining what code does — name things clearly instead.
 - Do not add error handling for impossible cases or internal invariants.
-- Do not create planning or analysis documents — work from conversation context.
 - Do not add backwards-compatibility shims when you can just change the code.
